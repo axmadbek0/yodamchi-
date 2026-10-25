@@ -19,7 +19,6 @@ export function LoginPage() {
   const [role, setRole] = useState<UserRole>('parent');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [schoolNumber, setSchoolNumber] = useState('');
   
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -40,8 +39,7 @@ export function LoginPage() {
 
     setIsLoading(true);
     try {
-      const parsedSchool = schoolNumber.trim() ? parseInt(schoolNumber, 10) : undefined;
-      const result = await login(role, username.trim(), password, parsedSchool);
+      const result = await login(role, username.trim(), password);
       if (result.ok) {
         const stored = localStorage.getItem('yordamchi_auth_user');
         const parsed = stored ? (JSON.parse(stored) as { role?: string }) : null;
@@ -134,15 +132,6 @@ export function LoginPage() {
                   <span>{error}</span>
                 </div>
               )}
-
-              {/* School Number */}
-              <Input
-                label="Maktab raqami (ixtiyoriy)"
-                type="number"
-                placeholder="Masalan: 71 yoki 12"
-                value={schoolNumber}
-                onChange={(e) => setSchoolNumber(e.target.value)}
-              />
 
               {/* Login */}
               <Input
