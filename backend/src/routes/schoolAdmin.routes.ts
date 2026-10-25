@@ -12,6 +12,7 @@ import {
   addCamera,
   updateCamera,
   sendAnnouncement,
+  resetSchoolDatabase,
 } from '../controllers/schoolAdmin.controller';
 
 const router = Router();
@@ -34,5 +35,8 @@ router.post('/cameras', addCamera);
 router.patch('/cameras/:id', updateCamera);
 
 router.post('/announcements', sendAnnouncement);
+
+// Baza ma'lumotlarini tozalash va qayta boshlash (2-bosqichli xavfsizlik bilan)
+router.post('/reset-database', resetSchoolDatabase);
 
 export default router;

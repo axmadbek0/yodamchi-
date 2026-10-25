@@ -112,3 +112,32 @@ export async function sendAnnouncement(
   >('/school-admin/announcements', payload);
   return res.data.data;
 }
+
+export interface ResetDatabasePayload {
+  password: string;
+  confirmation: string;
+  resetCameras?: boolean;
+}
+
+export interface ResetDatabaseResult {
+  success: boolean;
+  message: string;
+  stats?: {
+    deletedStudents: number;
+    deletedLogs: number;
+    deletedUsers: number;
+    deletedFoodAnalyses: number;
+    deletedAnnouncements: number;
+    deletedCameras: number;
+  };
+}
+
+export async function resetSchoolDatabase(
+  payload: ResetDatabasePayload
+): Promise<ResetDatabaseResult> {
+  const res = await axiosInstance.post<ResetDatabaseResult>(
+    '/school-admin/reset-database',
+    payload
+  );
+  return res.data;
+}

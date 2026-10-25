@@ -24,6 +24,8 @@ import { Button } from '../../components/ui/Button';
 import { useAuth } from '../../lib/auth';
 import { getReports, getSchoolProfile } from '../../lib/api/schoolAdmin';
 import type { SchoolReportData, SchoolProfileData } from '../../types/schoolAdmin';
+import { DatabaseResetModal } from './DatabaseResetModal';
+import { ShieldAlert, Trash2 } from 'lucide-react';
 
 export function SchoolAdminDashboard() {
   const { user } = useAuth();
@@ -31,6 +33,7 @@ export function SchoolAdminDashboard() {
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfileData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -331,8 +334,32 @@ export function SchoolAdminDashboard() {
               <ArrowRight className="w-4 h-4 text-muted group-hover:translate-x-1 transition-transform" />
             </Link>
           </Card>
+          {/* Danger Zone: Database Reset */}
+          <Card variant="white" className="p-6 shadow-sm border border-red-200 bg-red-500/5 space-y-3">
+            <div className="flex items-center gap-2 text-red-600 font-bold text-sm">
+              <ShieldAlert className="w-4 h-4" />
+              <span>Ma'lumotlar bazasini boshqarish</span>
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              Yangi o'quv yili yoki tizimni toza holatda qayta ishga tushirish uchun maktab bazasini xavfsiz tozalash.
+            </p>
+            <button
+              type="button"
+              onClick={() => setIsResetModalOpen(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all text-xs font-bold cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Bazani tozalash va qayta boshlash
+            </button>
+          </Card>
         </div>
       </div>
+      <DatabaseResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        schoolNumber={user?.schoolNumber || 71}
+        onSuccess={loadData}
+      />
     </div>
   );
 }

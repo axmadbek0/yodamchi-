@@ -1,4 +1,10 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { groqService } from './groq.service';
 
 const PEDAGOG_SYSTEM_INSTRUCTION = `
 Siz imkoniyati cheklangan (aqli zaif, Daun sindromi, autizm) bolalar bilan ishlaydigan
@@ -52,28 +58,60 @@ Talablar:
 `.trim();
 }
 
+/**
+ * Kunlik hisobot tahlili:
+ * 1-bosqich: Groq AI (Yuqori tezlik + Multi-key fallback)
+ * 2-bosqich: Gemini AI (Zaxira)
+ * 3-bosqich: Fallback xulosa
+ */
 export async function analyzeDailyLog(input: AnalyzeDailyLogInput): Promise<string | null> {
-  const model = getGeminiModel(PEDAGOG_SYSTEM_INSTRUCTION);
-  if (!model) {
-    console.warn('[AI] GEMINI_API_KEY konfiguratsiya qilinmagan');
-    return null;
+  // 1. Asosiy: Groq AI LPU orqali tahlil qilish
+  try {
+    const groqResult = await groqService.analyzeStudentDailyLog(input);
+    if (groqResult) {
+      return groqResult;
+    }
+  } catch (err: any) {
+    console.warn('[AI Service] Groq tahlili xatosi, zaxira tizimga o\'tilmoqda:', err?.message || err);
   }
 
-  try {
-    const result = await model.generateContent(buildDailyLogPrompt(input));
-    const text = result.response.text()?.trim();
-    return text || null;
-  } catch (error) {
-    console.error('[AI] Kunlik hisobot tahlili muvaffaqiyatsiz:', error);
-    return null;
+  // 2. Zaxira: Gemini AI
+  const model = getGeminiModel(PEDAGOG_SYSTEM_INSTRUCTION);
+  if (model) {
+    try {
+      const result = await model.generateContent(buildDailyLogPrompt(input));
+      const text = result.response.text()?.trim();
+      if (text) return text;
+    } catch (error) {
+      console.warn('[AI Service] Gemini tahlili xatosi:', error);
+    }
   }
+
+  return null;
 }
 
 export async function analyzeStatusReport(input: AnalyzeDailyLogInput): Promise<string | null> {
   return analyzeDailyLog(input);
 }
 
+/**
+ * AI Pedagog Maslahatchi chat:
+ * 1-bosqich: Groq AI
+ * 2-bosqich: Gemini AI
+ * 3-bosqich: Fallback
+ */
 export async function chatWithAi(input: ChatWithAiInput): Promise<string | null> {
+  // 1. Asosiy: Groq AI
+  try {
+    const groqReply = await groqService.chatSpecialPedagogy(input);
+    if (groqReply) {
+      return groqReply;
+    }
+  } catch (err: any) {
+    console.warn('[AI Service] Groq chat xatosi:', err?.message || err);
+  }
+
+  // 2. Zaxira: Gemini AI
   const model = getGeminiModel(`
 Siz "Yordamchi med" platformasining maxsus pedagogika bo'yicha AI maslahatchisiz.
 Siz bilan muloqot qilayotgan shaxs — ${input.studentName || 'bola'} ota-onasi (sinf: ${input.studentClass || 'maxsus guruh'}).
@@ -81,26 +119,25 @@ O'zbek tilida (lotin), samimiy va qisqa javob bering (2-3 xatboshi).
 Tibbiy tashxis qo'ymang; kerak bo'lsa shifokorga murojaat qilishni muloyimlik bilan tavsiya qiling.
 `.trim());
 
-  if (!model) {
-    console.warn('[AI] GEMINI_API_KEY konfiguratsiya qilinmagan');
-    return null;
+  if (model) {
+    try {
+      const history = input.history ?? [];
+      const chat = model.startChat({
+        history: history.map((item) => ({
+          role: item.role === 'model' ? 'model' : 'user',
+          parts: [{ text: item.parts[0]?.text ?? '' }],
+        })),
+      });
+
+      const result = await chat.sendMessage(input.message);
+      const text = result.response.text()?.trim();
+      if (text) return text;
+    } catch (error) {
+      console.warn('[AI Service] Gemini chat xatosi:', error);
+    }
   }
 
-  try {
-    const history = input.history ?? [];
-    const chat = model.startChat({
-      history: history.map((item) => ({
-        role: item.role === 'model' ? 'model' : 'user',
-        parts: [{ text: item.parts[0]?.text ?? '' }],
-      })),
-    });
-
-    const result = await chat.sendMessage(input.message);
-    return result.response.text()?.trim() || null;
-  } catch (error) {
-    console.error('[AI] Chat javobi muvaffaqiyatsiz:', error);
-    return null;
-  }
+  return null;
 }
 
 export function getFallbackAnalysis(input: AnalyzeDailyLogInput): string {

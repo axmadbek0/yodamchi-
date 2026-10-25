@@ -702,3 +702,149 @@ export async function sendAnnouncement(
     next(error);
   }
 }
+
+export const resetDatabaseSchema = z.object({
+  password: z.string().min(1, "Administrator paroli kiritilishi shart"),
+  confirmation: z.string().refine((val) => val === 'TOZALASH' || val === 'RESET', {
+    message: "Tasdiqlash uchun aniq 'TOZALASH' so'zini kiriting",
+  }),
+  resetCameras: z.boolean().optional(),
+});
+
+/**
+ * POST /api/school-admin/reset-database
+ * Maktabga tegishli barcha ma'lumotlarni (o'quvchilar, o'qituvchilar, baholar, davomat, jadvallar)
+ * xavfsiz va to'liq tozalash. Maktab admini va maktabning o'zi saqlanib qoladi.
+ */
+export async function resetSchoolDatabase(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const schoolId = req.schoolId!;
+    const adminUserId = req.user!.id;
+
+    const validated = resetDatabaseSchema.parse(req.body);
+
+    // 1. Admin hisobini va parolini tekshirish (2-bosqichli xavfsizlik)
+    const adminUser = await prisma.user.findUnique({
+      where: { id: adminUserId },
+    });
+
+    if (!adminUser || !adminUser.password_hash) {
+      throw AppError.unauthorized('Administrator hisobi topilmadi');
+    }
+
+    const isMatch = await bcrypt.compare(validated.password, adminUser.password_hash);
+    if (!isMatch) {
+      throw AppError.unauthorized("Administrator paroli noto'g'ri. Xavfsizlik tufayli baza tozalanmadi.");
+    }
+
+    // 2. Transaction orqali maktabga tegishli barcha ma'lumotlarni o'chirish
+    const result = await prisma.$transaction(async (tx) => {
+      // a. Maktab o'quvchilari va ularning kundalik jurnallari
+      const students = await tx.student.findMany({
+        where: { school_id: schoolId },
+        select: { id: true },
+      });
+      const studentIds = students.map((s) => s.id);
+
+      const deletedLogs = await tx.dailyLog.deleteMany({
+        where: { student_id: { in: studentIds } },
+      });
+
+      const deletedStudents = await tx.student.deleteMany({
+        where: { school_id: schoolId },
+      });
+
+      // b. Oshxona AI tahlillari va e'lonlar
+      const deletedFoodAnalyses = await tx.foodAnalysis.deleteMany({
+        where: { school_id: schoolId },
+      });
+
+      const deletedAnnouncements = await tx.announcement.deleteMany({
+        where: { school_id: schoolId },
+      });
+
+      // c. Maktab o'qituvchilari va ota-onalari (faqat admin bo'lmagan foydalanuvchilar)
+      const usersToDelete = await tx.user.findMany({
+        where: {
+          school_id: schoolId,
+          id: { not: adminUserId },
+          role: { not: 'SCHOOL_ADMIN' },
+        },
+        select: { id: true },
+      });
+      const userIdsToDelete = usersToDelete.map((u) => u.id);
+
+      // Ularning tokenlari va chat xabarlari
+      await tx.refreshToken.deleteMany({
+        where: { user_id: { in: userIdsToDelete } },
+      });
+
+      const chats = await tx.chat.findMany({
+        where: { user_id: { in: userIdsToDelete } },
+        select: { id: true },
+      });
+      const chatIds = chats.map((c) => c.id);
+
+      await tx.message.deleteMany({
+        where: { chat_id: { in: chatIds } },
+      });
+
+      await tx.chat.deleteMany({
+        where: { id: { in: chatIds } },
+      });
+
+      const deletedUsers = await tx.user.deleteMany({
+        where: { id: { in: userIdsToDelete } },
+      });
+
+      // d. Ixtiyoriy kameralar tozalash
+      let deletedCamerasCount = 0;
+      if (validated.resetCameras) {
+        const deletedCameras = await tx.camera.deleteMany({
+          where: { school_id: schoolId },
+        });
+        deletedCamerasCount = deletedCameras.count;
+      }
+
+      // e. AuditLog qayd etish
+      await tx.auditLog.create({
+        data: {
+          adminId: adminUserId,
+          action: 'SCHOOL_DATABASE_RESET',
+          targetType: 'School',
+          targetId: schoolId,
+          metadata: JSON.stringify({
+            deletedStudents: deletedStudents.count,
+            deletedLogs: deletedLogs.count,
+            deletedUsers: deletedUsers.count,
+            deletedFoodAnalyses: deletedFoodAnalyses.count,
+            deletedAnnouncements: deletedAnnouncements.count,
+            deletedCameras: deletedCamerasCount,
+            resetAt: new Date().toISOString(),
+          }),
+        },
+      });
+
+      return {
+        deletedStudents: deletedStudents.count,
+        deletedLogs: deletedLogs.count,
+        deletedUsers: deletedUsers.count,
+        deletedFoodAnalyses: deletedFoodAnalyses.count,
+        deletedAnnouncements: deletedAnnouncements.count,
+        deletedCameras: deletedCamerasCount,
+      };
+    });
+
+    res.json({
+      success: true,
+      message: "Maktab bazasi to'liq va muvaffaqiyatli tozalandi. Yangi o'qituvchi va o'quvchilarni kiritishingiz mumkin.",
+      stats: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+}

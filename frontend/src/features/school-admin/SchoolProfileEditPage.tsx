@@ -20,6 +20,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { getSchoolProfile, updateSchoolProfile } from '../../lib/api/schoolAdmin';
 import type { SchoolProfileData } from '../../types/schoolAdmin';
+import { DatabaseResetModal } from './DatabaseResetModal';
+import { ShieldAlert, Trash2 } from 'lucide-react';
 
 export function SchoolProfileEditPage() {
   const [profile, setProfile] = useState<SchoolProfileData | null>(null);
@@ -34,6 +36,7 @@ export function SchoolProfileEditPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const fetchProfile = async () => {
     setIsLoading(true);
@@ -207,6 +210,29 @@ export function SchoolProfileEditPage() {
           </div>
         </Card>
 
+        {/* Xavfli zona / Baza tozalash */}
+        <div className="mt-8 border-t border-cardBlue/60 pt-6">
+          <Card variant="white" className="p-6 shadow-sm border border-red-200 bg-red-500/5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-red-600 font-bold text-sm">
+                <ShieldAlert className="w-4 h-4" />
+                <span>Xavfli zona: Baza ma'lumotlarini tozalash</span>
+              </div>
+              <p className="text-xs text-muted max-w-xl">
+                Maktabga tegishli barcha o'quvchilar, o'qituvchilar, baholar va hisobotlarni butunlay tozalab, tizimni yangitdan boshlash uchun boshlang'ich holatga keltiradi.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsResetModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all text-xs font-bold shrink-0 flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Bazani tozalash va qayta boshlash
+            </button>
+          </Card>
+        </div>
+
         {/* Submit */}
         <div className="flex justify-end">
           <Button
@@ -220,6 +246,12 @@ export function SchoolProfileEditPage() {
           </Button>
         </div>
       </form>
+      <DatabaseResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        schoolNumber={profile?.schoolNumber || 71}
+        onSuccess={fetchProfile}
+      />
     </div>
   );
 }
